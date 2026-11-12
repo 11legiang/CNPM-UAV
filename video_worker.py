@@ -5,9 +5,14 @@ from PySide6.QtGui import QImage
 
 from ultralytics import YOLO
 
+
 class VideoWorker(QThread):
     frame_ready = Signal(QImage)
     status_changed = Signal(str)
+
+    # <--- 1. MỚI THÊM: Khai báo tín hiệu trạng thái cảnh báo --->
+    alarm_changed = Signal(bool)
+    # ------------------------------------------------------------
 
     def __init__(self, video_path, parent=None):
         super().__init__(parent)
@@ -32,6 +37,14 @@ class VideoWorker(QThread):
 
             self.status_changed.emit("Trạng thái: Đang nhận diện")
 
+            # <--- 2. MỚI THÊM: Khởi tạo các biến đếm chống nhiễu cảnh báo --->
+            detections = 0
+            misses = 0
+            alarm_active = False
+            required_frames = 5
+            clear_frames = 10
+            # ------------------------------------------------------------------
+
             while not self.isInterruptionRequested():
                 success, frame = video.read()
 
@@ -52,9 +65,25 @@ class VideoWorker(QThread):
                     self.status_changed.emit("Trạng thái: Đã dừng")
                     return
 
+                # <--- 3. MỚI THÊM: Kiểm tra phát hiện và phát tín hiệu cảnh báo --->
+                has_detection = len(results[0].boxes) > 0
+                if has_detection:
+                    detections += 1
+                    misses = 0
+                    if detections >= required_frames and not alarm_active:
+                        alarm_active = True
+                        self.alarm_changed.emit(True)
+                else:
+                    detections = 0
+                    misses += 1
+                    if misses >= clear_frames and alarm_active:
+                        alarm_active = False
+                        self.alarm_changed.emit(False)
+                # ------------------------------------------------------------------
+
                 annotated_frame = results[0].plot()
                 rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                
+
                 height, width, _ = rgb_frame.shape
 
                 image = QImage(

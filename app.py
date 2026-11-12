@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 
-# <--- 1. CẬP NHẬT IMPORT: Bỏ cv2, thêm Slot và VideoWorker --->
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
 )
 
 from video_worker import VideoWorker
-# ---------------------------------------------------------------
 
 
 class MonitoringWindow(QWidget):
@@ -22,17 +20,18 @@ class MonitoringWindow(QWidget):
         super().__init__()
 
         self.video_path = None
-
-        # <--- 2. CẬP NHẬT KHỞI TẠO: Thay video/timer bằng worker --->
         self.worker = None
         self.close_pending = False
-        # ------------------------------------------------------------
 
         self.setWindowTitle("Giám sát cháy từ camera UAV")
         self.resize(800, 600)
 
         self.video_label = QLabel("Chưa chọn video")
         self.status_label = QLabel("Trạng thái: Chưa chọn video")
+
+        # <--- 1. MỚI THÊM: Khởi tạo nhãn cảnh báo --->
+        self.alarm_label = QLabel("Cảnh báo: Chưa giám sát")
+        # --------------------------------------------
 
         self.preview_label = QLabel("Video sẽ hiển thị tại đây")
         self.preview_label.setFixedSize(640, 360)
@@ -58,6 +57,11 @@ class MonitoringWindow(QWidget):
         layout.addWidget(self.stop_button)
         layout.addWidget(self.video_label)
         layout.addWidget(self.status_label)
+
+        # <--- 1. MỚI THÊM: Đưa nhãn cảnh báo vào layout --->
+        layout.addWidget(self.alarm_label)
+        # ---------------------------------------------------
+
         layout.addWidget(self.preview_label)
         layout.addStretch()
 
@@ -81,7 +85,6 @@ class MonitoringWindow(QWidget):
         self.status_label.setText("Trạng thái: Đã chọn video")
         self.start_button.setEnabled(True)
 
-    # <--- 3. CẬP NHẬT: Khởi chạy và gửi yêu cầu dừng tới VideoWorker --->
     def start_monitoring(self):
         if not self.video_path or self.worker is not None:
             return
@@ -95,6 +98,13 @@ class MonitoringWindow(QWidget):
         self.worker.frame_ready.connect(self.display_frame)
         self.worker.status_changed.connect(self.status_label.setText)
         self.worker.finished.connect(self.on_worker_finished)
+
+        # <--- 2. MỚI THÊM: Đặt lại nhãn cảnh báo và nối tín hiệu alarm_changed --->
+        self.alarm_label.setText("Cảnh báo: Chưa đủ điều kiện cảnh báo")
+        self.alarm_label.setStyleSheet("")
+        self.worker.alarm_changed.connect(self.update_alarm)
+        # -------------------------------------------------------------------------
+
         self.worker.start()
 
     def stop_monitoring(self):
@@ -102,9 +112,22 @@ class MonitoringWindow(QWidget):
             self.stop_button.setEnabled(False)
             self.status_label.setText("Trạng thái: Đang dừng")
             self.worker.requestInterruption()
-    # --------------------------------------------------------------------
 
-    # <--- 4. CẬP NHẬT: Nhận ảnh từ worker và xử lý dọn dẹp khi xong --->
+    # <--- 3. MỚI THÊM: Hàm cập nhật giao diện nhãn cảnh báo --->
+    @Slot(bool)
+    def update_alarm(self, active):
+        if active:
+            self.alarm_label.setText("CẢNH BÁO: Phát hiện dấu hiệu cháy!")
+            self.alarm_label.setStyleSheet(
+                "color: red; font-weight: bold;"
+            )
+        else:
+            self.alarm_label.setText(
+                "Cảnh báo: Đã kết thúc — không còn phát hiện kéo dài"
+            )
+            self.alarm_label.setStyleSheet("")
+    # -----------------------------------------------------------
+
     @Slot(QImage)
     def display_frame(self, image):
         pixmap = QPixmap.fromImage(image)
@@ -125,11 +148,14 @@ class MonitoringWindow(QWidget):
         self.start_button.setEnabled(self.video_path is not None)
         self.stop_button.setEnabled(False)
 
+        # <--- 4. MỚI THÊM: Đặt lại nhãn cảnh báo khi dừng hoặc hết video --->
+        self.alarm_label.setText("Cảnh báo: Giám sát đã kết thúc")
+        self.alarm_label.setStyleSheet("")
+        # --------------------------------------------------------------------
+
         if self.close_pending:
             self.close()
-    # --------------------------------------------------------------------
 
-    # <--- 5. CẬP NHẬT: Đợi worker dừng an toàn trước khi đóng cửa sổ --->
     def closeEvent(self, event):
         if self.worker is not None:
             self.close_pending = True
@@ -137,7 +163,6 @@ class MonitoringWindow(QWidget):
             event.ignore()
         else:
             event.accept()
-    # --------------------------------------------------------------------
 
 
 if __name__ == "__main__":
