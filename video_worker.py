@@ -1,18 +1,17 @@
+from datetime import datetime
+from pathlib import Path
+
 import cv2
+from ultralytics import YOLO
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
-
-from ultralytics import YOLO
 
 
 class VideoWorker(QThread):
     frame_ready = Signal(QImage)
     status_changed = Signal(str)
-
-    # <--- 1. MỚI THÊM: Khai báo tín hiệu trạng thái cảnh báo --->
     alarm_changed = Signal(bool)
-    # ------------------------------------------------------------
 
     def __init__(self, video_path, parent=None):
         super().__init__(parent)
@@ -37,13 +36,12 @@ class VideoWorker(QThread):
 
             self.status_changed.emit("Trạng thái: Đang nhận diện")
 
-            # <--- 2. MỚI THÊM: Khởi tạo các biến đếm chống nhiễu cảnh báo --->
+            # Bộ đếm được khởi tạo lại ở mỗi lượt giám sát.
             detections = 0
             misses = 0
             alarm_active = False
             required_frames = 5
             clear_frames = 10
-            # ------------------------------------------------------------------
 
             while not self.isInterruptionRequested():
                 success, frame = video.read()
@@ -54,6 +52,7 @@ class VideoWorker(QThread):
                     )
                     return
 
+                # Nhận diện trên một khung hình.
                 results = model.predict(
                     source=frame,
                     device="cpu",
@@ -65,25 +64,33 @@ class VideoWorker(QThread):
                     self.status_changed.emit("Trạng thái: Đã dừng")
                     return
 
-                # <--- 3. MỚI THÊM: Kiểm tra phát hiện và phát tín hiệu cảnh báo --->
-                has_detection = len(results[0].boxes) > 0
+                # results là danh sách; lấy kết quả của khung hình đầu tiên.
+                result = results[0]
+                annotated_frame = result.plot()
+                has_detection = len(result.boxes) > 0
+
+                # Chỉ phát tín hiệu khi trạng thái cảnh báo thay đổi.
                 if has_detection:
                     detections += 1
                     misses = 0
+
                     if detections >= required_frames and not alarm_active:
                         alarm_active = True
                         self.alarm_changed.emit(True)
+                        self.save_alert_frame(annotated_frame)
                 else:
                     detections = 0
                     misses += 1
+
                     if misses >= clear_frames and alarm_active:
                         alarm_active = False
                         self.alarm_changed.emit(False)
-                # ------------------------------------------------------------------
 
-                annotated_frame = results[0].plot()
-                rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-
+                # Chuyển ảnh BGR sang RGB để hiển thị bằng Qt.
+                rgb_frame = cv2.cvtColor(
+                    annotated_frame,
+                    cv2.COLOR_BGR2RGB,
+                )
                 height, width, _ = rgb_frame.shape
 
                 image = QImage(
@@ -105,3 +112,25 @@ class VideoWorker(QThread):
         finally:
             if video is not None:
                 video.release()
+
+    def save_alert_frame(self, frame):
+        try:
+            alert_dir = (
+                Path(__file__).resolve().parent / "outputs" / "alerts"
+            )
+            alert_dir.mkdir(parents=True, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            image_path = alert_dir / f"alert_{timestamp}.jpg"
+
+            success, encoded_image = cv2.imencode(".jpg", frame)
+
+            if not success:
+                print("Không mã hóa được ảnh minh chứng.")
+                return
+
+            image_path.write_bytes(encoded_image.tobytes())
+            print(f"Đã lưu ảnh minh chứng: {image_path}")
+
+        except (OSError, cv2.error) as error:
+            print(f"Không lưu được ảnh minh chứng: {error}")
