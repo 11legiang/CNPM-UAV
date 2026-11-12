@@ -15,3 +15,6 @@ runs/
 # Cấu hình chứa thông tin bí mật
 .env
 .env.*
+
+# Ảnh và dữ liệu sinh ra khi chạy
+outputs/

@@ -1,6 +1,8 @@
 import cv2
 from ultralytics import YOLO
 import winsound
+from pathlib import Path
+from datetime import datetime
 
 # 1. Khởi tạo model YOLOv8
 model = YOLO("models/fire_smoke.pt")
@@ -18,6 +20,9 @@ alarm_active = False        # Đã bật trạng thái cảnh báo chưa
 
 consecutive_misses = 0
 clear_frames = 10
+
+alert_dir = Path("outputs/alerts")
+alert_dir.mkdir(parents=True, exist_ok=True)
 
 while True:
     success, frame = video.read()
@@ -42,6 +47,16 @@ while True:
             alarm_active = True
             print("CẢNH BÁO: Phát hiện dấu hiệu cháy!")
             winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+            # Lưu ảnh minh chứng khi cảnh báo vừa bật.
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            image_path = alert_dir / f"alert_{timestamp}.jpg"
+
+            saved = cv2.imwrite(str(image_path), results[0].plot())
+
+            if saved:
+                print(f"Đã lưu ảnh: {image_path}")
+            else:
+                print(f"Không lưu được ảnh: {image_path}")
     else:
         consecutive_detections = 0
         consecutive_misses += 1
