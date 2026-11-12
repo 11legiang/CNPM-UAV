@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 
-import cv2
-from PySide6.QtCore import QTimer, Qt
+# <--- 1. CẬP NHẬT IMPORT: Bỏ cv2, thêm Slot và VideoWorker --->
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -13,15 +13,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from video_worker import VideoWorker
+# ---------------------------------------------------------------
+
 
 class MonitoringWindow(QWidget):
     def __init__(self):
         super().__init__()
 
         self.video_path = None
-        self.video = None
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_frame)
+
+        # <--- 2. CẬP NHẬT KHỞI TẠO: Thay video/timer bằng worker --->
+        self.worker = None
+        self.close_pending = False
+        # ------------------------------------------------------------
 
         self.setWindowTitle("Giám sát cháy từ camera UAV")
         self.resize(800, 600)
@@ -70,66 +75,38 @@ class MonitoringWindow(QWidget):
             return
 
         self.video_path = path
-
-        # <--- MỚI THÊM: Xóa khung hình cũ và nhắc người dùng bấm Bắt đầu --->
         self.preview_label.clear()
         self.preview_label.setText("Nhấn Bắt đầu để phát video")
-        # -------------------------------------------------------------------
-
         self.video_label.setText(f"Video: {Path(path).name}")
         self.status_label.setText("Trạng thái: Đã chọn video")
         self.start_button.setEnabled(True)
 
+    # <--- 3. CẬP NHẬT: Khởi chạy và gửi yêu cầu dừng tới VideoWorker --->
     def start_monitoring(self):
-        if not self.video_path:
-            return
-
-        self.video = cv2.VideoCapture(self.video_path)
-        if not self.video.isOpened():
-            self.video.release()
-            self.video = None
-            self.status_label.setText("Lỗi: Không mở được video")
+        if not self.video_path or self.worker is not None:
             return
 
         self.select_button.setEnabled(False)
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        self.status_label.setText("Trạng thái: Đang phát video")
-        self.timer.start(33)
+        self.status_label.setText("Trạng thái: Đang mở video")
+
+        self.worker = VideoWorker(self.video_path, self)
+        self.worker.frame_ready.connect(self.display_frame)
+        self.worker.status_changed.connect(self.status_label.setText)
+        self.worker.finished.connect(self.on_worker_finished)
+        self.worker.start()
 
     def stop_monitoring(self):
-        self.timer.stop()
-        if self.video is not None:
-            self.video.release()
-            self.video = None
+        if self.worker is not None:
+            self.stop_button.setEnabled(False)
+            self.status_label.setText("Trạng thái: Đang dừng")
+            self.worker.requestInterruption()
+    # --------------------------------------------------------------------
 
-        self.select_button.setEnabled(True)
-        self.start_button.setEnabled(self.video_path is not None)
-        self.stop_button.setEnabled(False)
-        self.status_label.setText("Trạng thái: Đã dừng")
-
-    def update_frame(self):
-        if self.video is None:
-            return
-
-        success, frame = self.video.read()
-        if not success:
-            self.stop_monitoring()
-            self.status_label.setText(
-                "Trạng thái: Hết video hoặc không đọc được khung tiếp theo"
-            )
-            return
-
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        height, width, _ = rgb_frame.shape
-        image = QImage(
-            rgb_frame.data,
-            width,
-            height,
-            rgb_frame.strides[0],
-            QImage.Format.Format_RGB888,
-        ).copy()
-
+    # <--- 4. CẬP NHẬT: Nhận ảnh từ worker và xử lý dọn dẹp khi xong --->
+    @Slot(QImage)
+    def display_frame(self, image):
         pixmap = QPixmap.fromImage(image)
         self.preview_label.setPixmap(
             pixmap.scaled(
@@ -139,9 +116,28 @@ class MonitoringWindow(QWidget):
             )
         )
 
+    @Slot()
+    def on_worker_finished(self):
+        self.worker.deleteLater()
+        self.worker = None
+
+        self.select_button.setEnabled(True)
+        self.start_button.setEnabled(self.video_path is not None)
+        self.stop_button.setEnabled(False)
+
+        if self.close_pending:
+            self.close()
+    # --------------------------------------------------------------------
+
+    # <--- 5. CẬP NHẬT: Đợi worker dừng an toàn trước khi đóng cửa sổ --->
     def closeEvent(self, event):
-        self.stop_monitoring()
-        event.accept()
+        if self.worker is not None:
+            self.close_pending = True
+            self.stop_monitoring()
+            event.ignore()
+        else:
+            event.accept()
+    # --------------------------------------------------------------------
 
 
 if __name__ == "__main__":
