@@ -1,0 +1,17 @@
+# Môi trường Python và bộ nhớ đệm
+.venv/
+__pycache__/
+*.pyc
+
+# Mô hình và video: hướng dẫn tải riêng
+*.pt
+*.mp4
+*.avi
+*.mov
+
+# Kết quả chạy thử
+runs/
+
+# Cấu hình chứa thông tin bí mật
+.env
+.env.*
