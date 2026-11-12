@@ -63,7 +63,7 @@ class VideoWorker(QThread):
                 results = model.predict(
                     source=frame,
                     device="cpu",
-                    conf=0.25,
+                    conf=0.5,
                     verbose=False,
                 )
 
