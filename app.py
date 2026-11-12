@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-import winsound  # <--- 1. MỚI THÊM: Thư viện phát âm thanh trên Windows
+import winsound
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QImage, QPixmap
@@ -9,10 +9,12 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
     QPushButton,
+    QTabWidget,  # <--- 2. MỚI THÊM: Import QTabWidget
     QVBoxLayout,
     QWidget,
 )
 
+from history_widget import HistoryWidget  # <--- 2. MỚI THÊM: Import HistoryWidget
 from video_worker import VideoWorker
 
 
@@ -59,7 +61,20 @@ class MonitoringWindow(QWidget):
         layout.addWidget(self.preview_label)
         layout.addStretch()
 
-        self.setLayout(layout)
+        # <--- 3. CẬP NHẬT: Gom layout cũ vào tab Giám sát và thêm tab Lịch sử --->
+        monitoring_tab = QWidget()
+        monitoring_tab.setLayout(layout)
+
+        self.history_widget = HistoryWidget()
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(monitoring_tab, "Giám sát")
+        self.tabs.addTab(self.history_widget, "Lịch sử")
+
+        root_layout = QVBoxLayout()
+        root_layout.addWidget(self.tabs)
+        self.setLayout(root_layout)
+        # --------------------------------------------------------------------------
 
     def select_video(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -112,12 +127,10 @@ class MonitoringWindow(QWidget):
             self.alarm_label.setStyleSheet(
                 "color: red; font-weight: bold;"
             )
-            # <--- 2. MỚI THÊM: Phát một tiếng chuông thông báo --->
             try:
                 winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
             except RuntimeError as error:
                 print(f"Không phát được âm thanh cảnh báo: {error}")
-            # -----------------------------------------------------
         else:
             self.alarm_label.setText(
                 "Cảnh báo: Đã kết thúc — không còn phát hiện kéo dài"

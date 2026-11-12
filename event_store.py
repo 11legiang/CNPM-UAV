@@ -57,3 +57,32 @@ class EventStore:
             )
             connection.commit()
             return cursor.lastrowid
+
+    def get_events(self):
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute("""
+                SELECT *
+                FROM events
+                ORDER BY id DESC
+                LIMIT 200
+            """).fetchall()
+            return [dict(row) for row in rows]
+    def update_review_status(self, event_id, status):
+        if status not in {"confirmed", "false_alarm"}:
+            raise ValueError("Trạng thái xác nhận không hợp lệ.")
+
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE events
+                SET review_status = ?
+                WHERE id = ?
+                """,
+                (status, event_id),
+            )
+
+            if cursor.rowcount != 1:
+                raise ValueError("Không tìm thấy sự kiện cần cập nhật.")
+
+            connection.commit()
