@@ -1,11 +1,14 @@
 from datetime import datetime
 from pathlib import Path
+import sqlite3  # <--- 1. MỚI THÊM
 
 import cv2
 from ultralytics import YOLO
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
+
+from event_store import EventStore  # <--- 1. MỚI THÊM
 
 
 class VideoWorker(QThread):
@@ -35,6 +38,10 @@ class VideoWorker(QThread):
                 return
 
             self.status_changed.emit("Trạng thái: Đang nhận diện")
+
+            # <--- 2. MỚI THÊM: Khởi tạo kho lưu trữ sự kiện SQLite --->
+            store = EventStore()
+            # -----------------------------------------------------------
 
             # Bộ đếm được khởi tạo lại ở mỗi lượt giám sát.
             detections = 0
@@ -74,10 +81,30 @@ class VideoWorker(QThread):
                     detections += 1
                     misses = 0
 
+                    # <--- 4. CẬP NHẬT: Lưu ảnh minh chứng và ghi sự kiện vào SQLite --->
                     if detections >= required_frames and not alarm_active:
                         alarm_active = True
                         self.alarm_changed.emit(True)
-                        self.save_alert_frame(annotated_frame)
+
+                        created_at = datetime.now().astimezone().isoformat(
+                            timespec="seconds"
+                        )
+                        video_time_seconds = (
+                            video.get(cv2.CAP_PROP_POS_MSEC) / 1000
+                        )
+                        image_path = self.save_alert_frame(annotated_frame)
+
+                        try:
+                            event_id = store.add_event(
+                                created_at=created_at,
+                                video_path=self.video_path,
+                                video_time_seconds=video_time_seconds,
+                                image_path=image_path,
+                            )
+                            print(f"Đã lưu sự kiện cảnh báo #{event_id}")
+                        except sqlite3.Error as error:
+                            print(f"Không lưu được sự kiện cảnh báo: {error}")
+                    # ------------------------------------------------------------------
                 else:
                     detections = 0
                     misses += 1
@@ -127,10 +154,12 @@ class VideoWorker(QThread):
 
             if not success:
                 print("Không mã hóa được ảnh minh chứng.")
-                return
+                return None
 
             image_path.write_bytes(encoded_image.tobytes())
             print(f"Đã lưu ảnh minh chứng: {image_path}")
+            return image_path  # <--- 3. MỚI THÊM: Trả về đường dẫn ảnh
 
         except (OSError, cv2.error) as error:
             print(f"Không lưu được ảnh minh chứng: {error}")
+            return None
