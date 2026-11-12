@@ -3,6 +3,7 @@ import cv2
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
+from ultralytics import YOLO
 
 class VideoWorker(QThread):
     frame_ready = Signal(QImage)
@@ -22,7 +23,14 @@ class VideoWorker(QThread):
                 self.status_changed.emit("Lỗi: Không mở được video")
                 return
 
-            self.status_changed.emit("Trạng thái: Đang phát video")
+            self.status_changed.emit("Trạng thái: Đang tải mô hình")
+            model = YOLO("models/fire_smoke.pt")
+
+            if self.isInterruptionRequested():
+                self.status_changed.emit("Trạng thái: Đã dừng")
+                return
+
+            self.status_changed.emit("Trạng thái: Đang nhận diện")
 
             while not self.isInterruptionRequested():
                 success, frame = video.read()
@@ -33,7 +41,20 @@ class VideoWorker(QThread):
                     )
                     return
 
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = model.predict(
+                    source=frame,
+                    device="cpu",
+                    conf=0.25,
+                    verbose=False,
+                )
+
+                if self.isInterruptionRequested():
+                    self.status_changed.emit("Trạng thái: Đã dừng")
+                    return
+
+                annotated_frame = results[0].plot()
+                rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                
                 height, width, _ = rgb_frame.shape
 
                 image = QImage(
