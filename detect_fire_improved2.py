@@ -1,5 +1,6 @@
 import cv2
 from ultralytics import YOLO
+import winsound
 
 # 1. Khởi tạo model YOLOv8
 model = YOLO("models/fire_smoke.pt")
@@ -40,6 +41,7 @@ while True:
         if consecutive_detections >= required_frames and not alarm_active:
             alarm_active = True
             print("CẢNH BÁO: Phát hiện dấu hiệu cháy!")
+            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
     else:
         consecutive_detections = 0
         consecutive_misses += 1
