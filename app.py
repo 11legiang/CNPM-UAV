@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import winsound  # <--- 1. MỚI THÊM: Thư viện phát âm thanh trên Windows
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QImage, QPixmap
@@ -28,10 +29,7 @@ class MonitoringWindow(QWidget):
 
         self.video_label = QLabel("Chưa chọn video")
         self.status_label = QLabel("Trạng thái: Chưa chọn video")
-
-        # <--- 1. MỚI THÊM: Khởi tạo nhãn cảnh báo --->
         self.alarm_label = QLabel("Cảnh báo: Chưa giám sát")
-        # --------------------------------------------
 
         self.preview_label = QLabel("Video sẽ hiển thị tại đây")
         self.preview_label.setFixedSize(640, 360)
@@ -57,11 +55,7 @@ class MonitoringWindow(QWidget):
         layout.addWidget(self.stop_button)
         layout.addWidget(self.video_label)
         layout.addWidget(self.status_label)
-
-        # <--- 1. MỚI THÊM: Đưa nhãn cảnh báo vào layout --->
         layout.addWidget(self.alarm_label)
-        # ---------------------------------------------------
-
         layout.addWidget(self.preview_label)
         layout.addStretch()
 
@@ -99,11 +93,9 @@ class MonitoringWindow(QWidget):
         self.worker.status_changed.connect(self.status_label.setText)
         self.worker.finished.connect(self.on_worker_finished)
 
-        # <--- 2. MỚI THÊM: Đặt lại nhãn cảnh báo và nối tín hiệu alarm_changed --->
         self.alarm_label.setText("Cảnh báo: Chưa đủ điều kiện cảnh báo")
         self.alarm_label.setStyleSheet("")
         self.worker.alarm_changed.connect(self.update_alarm)
-        # -------------------------------------------------------------------------
 
         self.worker.start()
 
@@ -113,7 +105,6 @@ class MonitoringWindow(QWidget):
             self.status_label.setText("Trạng thái: Đang dừng")
             self.worker.requestInterruption()
 
-    # <--- 3. MỚI THÊM: Hàm cập nhật giao diện nhãn cảnh báo --->
     @Slot(bool)
     def update_alarm(self, active):
         if active:
@@ -121,12 +112,17 @@ class MonitoringWindow(QWidget):
             self.alarm_label.setStyleSheet(
                 "color: red; font-weight: bold;"
             )
+            # <--- 2. MỚI THÊM: Phát một tiếng chuông thông báo --->
+            try:
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+            except RuntimeError as error:
+                print(f"Không phát được âm thanh cảnh báo: {error}")
+            # -----------------------------------------------------
         else:
             self.alarm_label.setText(
                 "Cảnh báo: Đã kết thúc — không còn phát hiện kéo dài"
             )
             self.alarm_label.setStyleSheet("")
-    # -----------------------------------------------------------
 
     @Slot(QImage)
     def display_frame(self, image):
@@ -148,10 +144,8 @@ class MonitoringWindow(QWidget):
         self.start_button.setEnabled(self.video_path is not None)
         self.stop_button.setEnabled(False)
 
-        # <--- 4. MỚI THÊM: Đặt lại nhãn cảnh báo khi dừng hoặc hết video --->
         self.alarm_label.setText("Cảnh báo: Giám sát đã kết thúc")
         self.alarm_label.setStyleSheet("")
-        # --------------------------------------------------------------------
 
         if self.close_pending:
             self.close()
